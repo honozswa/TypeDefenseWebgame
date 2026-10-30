@@ -412,13 +412,13 @@
     // ===== CONFIG (all balance lives here) =====
     const C = {
       R: 400, BASE: 38, HP: 100, EN: 100, proj: 650, shotDmg: 1, failEn: 12, recentWords: 18 /* no word repeats within the last N picks */, cancelEn: 12 /* Esc-cancel base penalty; ability prompts scale by ab.fail/failEn */, perChar: .22, minT: 1.2, maxT: 9, memBase: 0, memChar: .12, memTier: .1, memMin: .6, memMax: 2.2, // spawn pacing: first enemy after `first` s, then gap = start - step*(wave-1), floored at min, +/- jit random
-      spawn: { first: 1.8, start: 3.2, step: .12, min: 1.9, jit: .15, waveLen: 30, speedGrow: .02, speedCap: 1.4 },
+      spawn: { first: 1.8, start: 3.0, step: .13, min: 1.5, jit: .15, waveLen: 30, speedGrow: .02, speedCap: 1.4 },
       // Spawn Director: type gaps (seconds and spawn counts), soft active limits, threat budget
-      dir: { tankWave: 4, tank2Wave: 9, tankGap: 16, tankSpawns: 4, tankW: .5, disWave: 3, dis2Wave: 8, disGap: 14, disSpawns: 3, disW: .4, thr: { runner: 1, tank: 3, disruptor: 2 }, bud0: 5, budWave: .8, budMax: 14 },
+      dir: { tankWave: 3, tank2Wave: 5, tankGap: 8, tankSpawns: 4, tankW: .5, disWave: 2, dis2Wave: 4, disGap: 8, disSpawns: 3, disW: .4, thr: { runner: 1, tank: 3, disruptor: 2 }, bud0: 5, budWave: .8, budMax: 14 },
       // enemy-speed slider categories: value < max -> label + score multiplier
       diff: [{ max: .875, n: 'Easy', m: .8 }, { max: 1.125, n: 'Medium', m: 1 }, { max: 99, n: 'Hard', m: 1.5 }],
       enT: [[0, 1], [25, 1.5], [50, 2], [75, 2.5], [100, 3]], disDur: 8, disMul: .8, disEn: 20, chainEvery: 5, chainEn: 6, maxEnemies: 10,
-      en: { runner: { sp: 38, hp: 1, dmg: 8, pts: 10, r: 14, col: '#35e0ff', L: 'R' }, tank: { sp: 15, hp: 4, dmg: 22, pts: 40, r: 24, col: '#ff9a3c', L: 'T' }, disruptor: { sp: 24, hp: 3, dmg: 10, pts: 25, r: 17, col: '#ff4d8d', L: 'D' } },
+      en: { runner: { sp: 38, hp: 1, dmg: 8, pts: 10, r: 14, col: '#35e0ff' }, tank: { sp: 15, hp: 4, dmg: 22, pts: 40, r: 24, col: '#ff9a3c' }, disruptor: { sp: 24, hp: 3, dmg: 10, pts: 25, r: 17, col: '#ff4d8d' } },
       ab: [{ n: 'PULSE', tier: 0, dmg: 2, pierce: 0, cd: 6, un: 50, fail: 12, tm: 1, col: '#35e0ff' },
            { n: 'EMP', tier: 1, dmg: 0, cd: 25, un: 150, fail: 15, tm: 1, freeze: 4, col: '#7aa8ff' },
            { n: 'PIERCER', tier: 2, dmg: 2, pierce: 1, cd: 12, un: 400, fail: 15, tm: 1.1, col: '#d56bff' },
@@ -501,7 +501,7 @@
     }
     // score = displayed (x difficulty multiplier, once); prog = unlock progress (chain bonus only, difficulty-independent)
     function add(p) { const b = p * (1 + Math.min(G.chain, 20) * .05); G.score += Math.round(b * G.sm); G.prog += Math.round(b); C.ab.forEach((a, i) => { if (!G.un[i] && G.prog >= a.un) { G.un[i] = 1; toast('UNLOCKED: ' + a.n + ' (key ' + (i + 1) + ')', 'var(--c3)'); beep(880, .3) } }) }
-    function rot(d) { G.lane = (G.lane + d + 5) % 5; toast((d < 0 ? '◀ LEFT' : 'RIGHT ▶') + ' → Lane ' + (G.lane + 1), 'var(--c1)'); beep(300, .05) }
+    function rot(d) { G.lane = (G.lane + d + 5) % 5; beep(300, .05) }
     function startCh(ai) {
       if (G.ch) return; const ab = ai >= 0 ? C.ab[ai] : { n: 'SHOT', tier: Math.min(2, Math.floor((G.wave - 1) / 3)), tm: 1, fail: C.failEn, col: '#ffd23f' }; let w, n = 0;
       do { w = W[ab.tier][Math.floor(Math.random() * W[ab.tier].length)] } while (G.recent.includes(w) && n++ < 20); if (typeof w !== 'string' || !w) w = W[0][0]; G.recent = [w, ...G.recent].slice(0, C.recentWords);
@@ -636,9 +636,32 @@
       for (const e of G.E) {
         const d = C.en[e.type], a = LA(e.lane); X.save(); X.translate(Math.cos(a) * e.d, Math.sin(a) * e.d); X.rotate(a + Math.PI); X.fillStyle = d.col; X.strokeStyle = e.fz > 0 ? '#cfe6ff' : '#001'; X.lineWidth = e.fz > 0 ? 4 : 2; X.beginPath();
         if (e.type === 'runner') { X.moveTo(d.r + 4, 0); X.lineTo(-d.r, -d.r * .8); X.lineTo(-d.r, d.r * .8); X.closePath() } else if (e.type === 'tank') { X.rect(-d.r, -d.r, d.r * 2, d.r * 2) } else { X.moveTo(d.r + 3, 0); X.lineTo(0, -d.r); X.lineTo(-d.r, 0); X.lineTo(0, d.r); X.closePath() }
-        X.fill(); X.stroke(); if (e.type === 'disruptor') { X.beginPath(); X.arc(0, 0, d.r + 7, 0, 6.3); X.strokeStyle = '#ff4d8d'; X.setLineDash([4, 4]); X.stroke(); X.setLineDash([]) } X.restore();
-        X.fillStyle = '#000'; X.font = 'bold 14px monospace'; X.textAlign = 'center'; X.fillText(d.L, Math.cos(a) * e.d, Math.sin(a) * e.d);
-        if (e.max > 1) { const bx = Math.cos(a) * e.d, by = Math.sin(a) * e.d - d.r - 10; X.fillStyle = '#222'; X.fillRect(bx - 16, by, 32, 5); X.fillStyle = '#4dff9a'; X.fillRect(bx - 16, by, 32 * e.hp / e.max, 5) }
+        X.fill(); X.stroke();
+        if (e.type === 'disruptor') { X.beginPath(); X.arc(0, 0, d.r + 7, 0, 6.3); X.strokeStyle = '#ff4d8d'; X.setLineDash([4, 4]); X.stroke(); X.setLineDash([]) }
+        if (e.max > 1) {
+          X.save();
+
+          // Cancel the enemy's local rotation
+          X.rotate(-(a + Math.PI));
+
+          // Cancel map rotation, keeping the health bar horizontal on screen
+          if (S.rotation === 'map') {
+              X.rotate(-G.mapAng);
+          }
+          X.fillStyle = '#222';
+          X.fillRect(-16, -d.r - 10, 32, 5);
+
+          X.fillStyle = '#4dff9a';
+          X.fillRect(
+              -16,
+              -d.r - 10,
+              32 * Math.max(0, e.hp) / e.max,
+              5
+          );
+
+          X.restore();
+        }
+        X.restore();
       }
       for (const p of G.P) { const a = LA(p.lane), x = Math.cos(a), y = Math.sin(a); X.strokeStyle = p.col; X.lineWidth = p.big ? 10 : p.pierce ? 6 : 4; X.lineCap = 'round'; X.beginPath(); X.moveTo(x * (p.d - (p.pierce ? 50 : 20)), y * (p.d - (p.pierce ? 50 : 20))); X.lineTo(x * p.d, y * p.d); X.stroke() }
       for (const f of G.F) { X.globalAlpha = Math.max(0, f.l * 2); X.fillStyle = f.col; X.fillRect(f.x - 2, f.y - 2, 4, 4) } X.globalAlpha = 1;
