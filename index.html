@@ -204,27 +204,65 @@
       width: 90vw
     }
 
-    #abs {
+    /* Permanent side controls: abilities on the left, movement/shoot on the right. */
+    #abs, #keyhelp {
       position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 6px;
+      top: 50%;
+      transform: translateY(-50%);
       display: flex;
-      gap: 6px;
+      flex-direction: column;
+      gap: 10px;
+      width: 154px;
+      padding: 10px;
+      border: 1px solid #2a4468;
+      border-radius: 10px;
+      background: #070a12df;
+      box-shadow: 0 4px 18px #0008;
+      z-index: 3
+    }
+
+    #abs { left: 12px; }
+    #keyhelp { right: 12px; }
+
+    #abs button, #keyhelp button {
+      width: 100%;
+      min-height: 62px;
+      padding: 8px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       justify-content: center;
-      flex-wrap: wrap;
-      padding: 0 6px
+      gap: 3px;
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1.15
     }
 
-    #abs button {
-      min-width: 120px;
-      font-size: 13px;
-      line-height: 1.2
-    }
-
-    #abs button small {
+    #abs button small, #keyhelp button small {
       display: block;
-      color: var(--dim)
+      color: var(--c1);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px
+    }
+
+    #keyhelp .panel-title, #abs .panel-title {
+      color: var(--dim);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-align: center;
+      padding-bottom: 2px
+    }
+
+    @media (max-width: 700px) {
+      #abs, #keyhelp { width: 112px; padding: 6px; gap: 6px; }
+      #abs { left: 4px; }
+      #keyhelp { right: 4px; }
+      #abs button, #keyhelp button { min-height: 50px; font-size: 13px; }
+      #abs button small, #keyhelp button small { font-size: 10px; }
+      #top { max-width: calc(100% - 8px); font-size: 11px; }
+      #info { display: none; }
     }
 
     #abs button.cd {
@@ -318,30 +356,40 @@
     </div>
     <div id="bufd"></div>
     <div id="toast" aria-live="polite"></div>
+    <div id="keyhelp" class="hide"></div>
     <div id="abs" class="hide"></div>
   </div>
   <div id="menu" class="ov">
     <div class="card">
       <h1>TYPE//DEFENSE</h1>
       <p>Rotate your turret across five lanes, then type to fire. Speed and accuracy decide who survives.</p>
+      <h2>ROTATION STYLE</h2>
+      <div class="row" id="gr"><button data-v="map">Map Rotation</button><button data-v="turret">Turret Rotation</button></div>
       <h2>ROTATION CONTROL</h2>
-      <div class="row" id="gc"><button data-v="cmd">Command: type LEFT / RIGHT</button><button data-v="ad">A / D
-          keys</button></div>
+      <div class="row" id="gc"><button data-v="ad">A / D / S keys</button><button data-v="cmd">type LEFT / RIGHT / SHOOT</button></div>
       <h2>WORD CHALLENGE</h2>
-      <div class="row" id="gm"><button data-v="mem">Memory Window (word hides)</button><button data-v="vis">Visible
-          Word</button></div>
+      <div class="row" id="gm"><button data-v="mem">Memory Window</button><button data-v="vis">Visible Word</button></div>
       <h2>ENEMY SPEED</h2>
       <div class="row" style="align-items:center"><input id="spd" type="range" min="0.7" max="1.5" step="0.05"
           aria-label="Enemy speed multiplier"><b id="spdv"></b></div>
       <p id="spdd"></p>
+      <p><b>Keyboard controls:</b> A = rotate left · D = rotate right · S = start shot. These keys are fixed.</p>
       <h2>SETTINGS</h2>
       <div class="row"><button id="snd" aria-pressed="true">Sound</button><button id="rm" aria-pressed="false">Reduced
           motion</button></div>
       <h2>HOW TO PLAY</h2>
       <ul id="how"></ul>
-      <div class="row"><button id="play" style="background:#0d4a3a;font-size:18px">▶ PLAY</button></div>
+      <div class="row"><button id="play" style="background:#0d4a3a;font-size:18px">▶ PLAY</button><button id="tutorialBtn">? TUTORIAL</button></div>
       <h2>LOCAL BEST SCORES</h2>
       <table id="recs"></table>
+    </div>
+  </div>
+  <div id="tutorial" class="ov hide">
+    <div class="card">
+      <h1 id="tutTitle">TUTORIAL</h1>
+      <p id="tutText"></p>
+      <p id="tutStep" style="color:var(--c1)"></p>
+      <div class="row"><button id="tutBack">Back</button><button id="tutNext" style="background:#0d4a3a">Next</button><button id="tutClose">Back to menu</button></div>
     </div>
   </div>
   <div id="pause" class="ov hide">
@@ -385,9 +433,30 @@
     ];
     // ===== storage =====
     const LS = 'typedef.'; const ld = k => { try { const v = JSON.parse(localStorage.getItem(LS + k)); return v && typeof v === 'object' ? v : {} } catch { return {} } }, sv = (k, v) => { try { localStorage.setItem(LS + k, JSON.stringify(v)) } catch { } };
-    let S = Object.assign({ ctrl: 'cmd', mode: 'mem', sound: true, rm: false, spd: 1 }, ld('s'));
-    if (!['cmd', 'ad'].includes(S.ctrl)) S.ctrl = 'cmd'; if (!['mem', 'vis'].includes(S.mode)) S.mode = 'mem'; S.sound = S.sound !== false; S.rm = S.rm === true; S.spd = Math.min(1.5, Math.max(.7, Math.round((+S.spd || 1) * 20) / 20));
-    const key = () => S.ctrl + '-' + S.mode, names = { 'cmd-mem': 'Command + Memory', 'cmd-vis': 'Command + Visible', 'ad-mem': 'A/D + Memory', 'ad-vis': 'A/D + Visible' };
+    let S = Object.assign({ ctrl: 'cmd', rotation: 'turret', mode: 'mem', sound: true, rm: false, spd: 1 }, ld('s'));
+    delete S.binds;
+    if (!['cmd', 'ad'].includes(S.ctrl)) S.ctrl = 'cmd'; if (!['turret', 'map'].includes(S.rotation)) S.rotation = 'turret'; if (!['mem', 'vis'].includes(S.mode)) S.mode = 'mem'; S.sound = S.sound !== false; S.rm = S.rm === true; S.spd = Math.min(1.5, Math.max(.7, Math.round((+S.spd || 1) * 20) / 20));
+    const key = () => S.ctrl + '-' + S.mode, names = {};
+    for (const c of ['cmd', 'ad']) for (const m of ['mem', 'vis'])
+      names[c + '-' + m] = (c === 'cmd' ? 'Type Commands' : 'A / D / S') + ' · ' + (m === 'mem' ? 'Memory' : 'Visible');
+    // Merge records from both rotation styles and legacy control-key formats.
+    const savedRecords = ld('r'), mergedRecords = {};
+    for (const c of ['cmd', 'ad']) for (const m of ['mem', 'vis']) {
+      const target = c + '-' + m;
+      const candidates = [savedRecords[target], savedRecords['turret-' + target], savedRecords['map-' + target],
+        savedRecords[c + '-' + m]];
+      const best = candidates.filter(Boolean).sort((a, b) => (+b.score || 0) - (+a.score || 0))[0];
+      if (best) mergedRecords[target] = best;
+    }
+    // Also migrate any historical entries whose names encoded rotation/control/word mode.
+    for (const [oldKey, value] of Object.entries(savedRecords)) {
+      const match = oldKey.match(/^(?:turret-|map-)?(cmd|ad)-(mem|vis)$/);
+      if (match) {
+        const target = match[1] + '-' + match[2];
+        if (!mergedRecords[target] || (+value.score || 0) > (+mergedRecords[target].score || 0)) mergedRecords[target] = value;
+      }
+    }
+    sv('r', mergedRecords);
     // ===== helpers =====
     const cl = (v, a, b) => Math.min(b, Math.max(a, v)), LA = i => -Math.PI / 2 + i * 2 * Math.PI / 5, fmt = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
     function enTime(e) { const t = C.enT; for (let i = 1; i < t.length; i++)if (e <= t[i][0]) { const [a, b] = [t[i - 1], t[i]]; return a[1] + (b[1] - a[1]) * (e - a[0]) / (b[0] - a[0]) } return t[t.length - 1][1] }
@@ -425,10 +494,10 @@
     let G = null, mode = 'menu', raf = 0, last = 0;
     function newRun() {
       G = {
-        t: 0, hp: C.HP, en: C.EN, score: 0, chain: 0, best: 0, lane: 0, ang: LA(0), wave: 1, E: [], P: [], F: [], ch: null, buf: '', bufT: 0, cd: [0, 0, 0, 0], un: [0, 0, 0, 0], dis: 0, flash: 0, shake: 0, emp: 0, sp: C.spawn.first, paused: false, prog: 0, spdMul: S.spd, sm: dinfo(S.spd).m, dir: { tT: -99, tD: -99, sT: 99, sD: 99 },
+        t: 0, hp: C.HP, en: C.EN, score: 0, chain: 0, best: 0, lane: 0, ang: LA(0), mapAng: 0, wave: 1, E: [], P: [], F: [], ch: null, buf: '', bufT: 0, cd: [0, 0, 0, 0], un: [0, 0, 0, 0], dis: 0, flash: 0, shake: 0, emp: 0, sp: C.spawn.first, paused: false, prog: 0, spdMul: S.spd, sm: dinfo(S.spd).m, dir: { tT: -99, tD: -99, sT: 99, sD: 99 },
         kills: { runner: 0, tank: 0, disruptor: 0 }, ok: 0, fail: 0, keys: 0, right: 0, recent: [], pk: 0, pa: 0, warn: 0
       };
-      mode = 'play';['menu', 'pause', 'over'].forEach(i => $(i).classList.add('hide'));['abs', 'pbtn'].forEach(i => $(i).classList.remove('hide')); buildAbs(); toast('Wave 1 — type SHOOT to begin', 'var(--c1)'); cancelAnimationFrame(raf); last = performance.now(); raf = requestAnimationFrame(loop)
+      mode = 'play';['menu', 'pause', 'over'].forEach(i => $(i).classList.add('hide'));['abs', 'pbtn', 'keyhelp'].forEach(i => $(i).classList.remove('hide')); buildAbs(); toast(S.ctrl === 'ad' ? 'Wave 1 — press S to begin' : 'Wave 1 — type SHOOT to begin', 'var(--c1)'); cancelAnimationFrame(raf); last = performance.now(); raf = requestAnimationFrame(loop)
     }
     // score = displayed (x difficulty multiplier, once); prog = unlock progress (chain bonus only, difficulty-independent)
     function add(p) { const b = p * (1 + Math.min(G.chain, 20) * .05); G.score += Math.round(b * G.sm); G.prog += Math.round(b); C.ab.forEach((a, i) => { if (!G.un[i] && G.prog >= a.un) { G.un[i] = 1; toast('UNLOCKED: ' + a.n + ' (key ' + (i + 1) + ')', 'var(--c3)'); beep(880, .3) } }) }
@@ -467,12 +536,23 @@
       if (G.paused) return; if (k === ' ' || k === 'Backspace' || k.startsWith('Arrow')) e.preventDefault(); if ((e.repeat && k !== 'Backspace') || e.ctrlKey || e.metaKey || e.altKey) return;
       const c = G.ch;
       if (c) { if (c.phase === 'show') return; if (k === 'Backspace') c.typed = c.typed.slice(0, -1); else if (/^[a-z]$/i.test(k) && c.typed.length < c.word.length) { const ch = k.toLowerCase(); G.keys++; if (ch === c.word[c.typed.length]) G.right++; else beep(130, .06, 'square'); c.typed += ch; if (c.typed === c.word) endCh(true) } return }
-      if (S.ctrl === 'ad' && /^[ad]$/i.test(k)) return rot(k.toLowerCase() === 'a' ? -1 : 1);
+      const key = k.toLowerCase();
+      if (S.ctrl === 'ad') {
+        if (key === 'a') return rot(-1);
+        if (key === 'd') return rot(1);
+        if (key === 's') return startCh(-1);
+        if (/^[1-4]$/.test(k)) return tryAb(+k - 1);
+        // No free typing or LEFT/RIGHT/SHOOT command buffer in keybind mode.
+        return;
+      }
       if (/^[1-4]$/.test(k)) return tryAb(+k - 1);
       if (k === 'Backspace') { G.buf = G.buf.slice(0, -1); return }
+      // Type commands are only parsed in Type mode and outside an active challenge.
       if (/^[a-z]$/i.test(k)) {
         G.buf = (G.buf + k.toUpperCase()).slice(-8); G.bufT = 2.5;
-        if (G.buf.endsWith('SHOOT')) { G.buf = ''; startCh(-1) } else if (S.ctrl === 'cmd' && G.buf.endsWith('LEFT')) { G.buf = ''; rot(-1) } else if (S.ctrl === 'cmd' && G.buf.endsWith('RIGHT')) { G.buf = ''; rot(1) }
+        if (G.buf.endsWith('SHOOT')) { G.buf = ''; startCh(-1) }
+        else if (S.ctrl === 'cmd' && G.buf.endsWith('LEFT')) { G.buf = ''; rot(-1) }
+        else if (S.ctrl === 'cmd' && G.buf.endsWith('RIGHT')) { G.buf = ''; rot(1) }
       }
     }
     addEventListener('keydown', key_);
@@ -502,6 +582,8 @@
       if (!hold) { G.sp -= dt; if (G.sp <= 0) G.sp = spawn() ? nextGap() : .5 }
       G.cd = G.cd.map(v => Math.max(0, v - dt)); G.dis = Math.max(0, G.dis - dt); G.flash = Math.max(0, G.flash - dt); G.shake = Math.max(0, G.shake - dt); G.emp = Math.max(0, G.emp - dt); G.blast = Math.max(0, (G.blast || 0) - dt); G.bufT -= dt; if (G.bufT <= 0) G.buf = '';
       G.ang += ((((LA(G.lane) - G.ang) % 6.2832) + 9.4248) % 6.2832 - 3.1416) * Math.min(1, dt * 14);
+      const mapTarget = -G.lane * 2 * Math.PI / 5;
+      G.mapAng += ((((mapTarget - G.mapAng) % 6.2832) + 9.4248) % 6.2832 - 3.1416) * Math.min(1, dt * 14);
       let near = false;
       for (const e of G.E) {
         if (!hold) { if (e.fz > 0) e.fz -= dt; else e.d -= e.spd * dt } const d = C.en[e.type]; if (e.d < 150) near = true;
@@ -529,7 +611,7 @@
       if (G.hp <= 0) over()
     }
     function over() {
-      mode = 'over'; G.ch = null; $('ch').classList.add('hide');['abs', 'pbtn'].forEach(i => $(i).classList.add('hide')); const r = ld('r'), k = key(), o = r[k] || {};
+      mode = 'over'; G.ch = null; $('ch').classList.add('hide');['abs', 'pbtn', 'keyhelp'].forEach(i => $(i).classList.add('hide')); const r = ld('r'), k = key(), o = r[k] || {};
       const nb = G.score > (+o.score || 0); if (nb) { r[k] = { score: G.score, time: Math.floor(G.t), chain: G.best, spd: G.spdMul }; sv('r', r) }
       const acc = G.keys ? Math.round(100 * G.right / G.keys) : 100, row = (a, b) => '<tr><td>' + a + '</td><td>' + b + '</td></tr>';
       $('stats').innerHTML = row('Mode', names[k]) + row('Difficulty', dtxt(G.spdMul).replace('speed', 'enemy speed') + ' · score ×' + G.sm.toFixed(2)) + row('Score', G.score + (nb ? ' ★ NEW BEST' : '')) + row('Survived', fmt(G.t) + ' (wave ' + G.wave + ')') + row('Defeated', 'Runner ' + G.kills.runner + ' · Tank ' + G.kills.tank + ' · Disruptor ' + G.kills.disruptor) + row('Typing accuracy', acc + '%') + row('Challenges ok / failed', G.ok + ' / ' + G.fail) + row('Abilities used', G.pa) + row('Best Perfect Chain', G.best) + row('Best score (this mode)', Math.max(G.score, +o.score || 0));
@@ -540,19 +622,17 @@
     function draw() {
       const s = Math.min(W_, H_) / (2 * C.R + 70) * .92; let sx = 0, sy = 0; if (G.shake > 0 && !S.rm) { sx = (Math.random() - .5) * 8; sy = (Math.random() - .5) * 8 }
       X.setTransform(dpr, 0, 0, dpr, 0, 0); X.clearRect(0, 0, W_, H_); X.setTransform(dpr * s, 0, 0, dpr * s, dpr * (W_ / 2 + sx), dpr * (H_ / 2 - 10 + sy));
+      X.save();
+      if (S.rotation === 'map') X.rotate(G.mapAng);
       const A = Math.PI / 5;
       for (let i = 0; i < 5; i++) {
         const a = LA(i), sel = i === G.lane; X.beginPath(); X.moveTo(0, 0); X.arc(0, 0, C.R, a - A, a + A); X.closePath(); X.fillStyle = sel ? 'rgba(53,224,255,.16)' : i % 2 ? 'rgba(40,60,100,.18)' : 'rgba(40,60,100,.08)'; X.fill(); X.strokeStyle = sel ? '#35e0ff' : '#27406a'; X.lineWidth = sel ? 3 : 1; X.stroke();
-        X.fillStyle = sel ? '#35e0ff' : '#6f8fb8'; X.font = 'bold 20px monospace'; X.textAlign = 'center'; X.textBaseline = 'middle'; X.fillText('L' + (i + 1), Math.cos(a) * (C.R + 22), Math.sin(a) * (C.R + 22))
       }
       if (G.blast > 0) { // Overload: orange tint on all five lanes + expanding shockwave ring (ring skipped in reduced motion)
         const k = 1 - G.blast / .8; for (let i = 0; i < 5; i++) { const a = LA(i); X.beginPath(); X.moveTo(0, 0); X.arc(0, 0, C.R, a - A, a + A); X.closePath(); X.fillStyle = 'rgba(255,122,42,' + (.22 * (1 - k)) + ')'; X.fill() }
         if (!S.rm) { X.strokeStyle = 'rgba(255,170,80,' + (1 - k) + ')'; X.lineWidth = 2 + 6 * (1 - k); X.beginPath(); X.arc(0, 0, C.BASE + k * (C.R - C.BASE), 0, 6.3); X.stroke() }
       }
       if (G.emp > 0) { X.fillStyle = 'rgba(122,168,255,' + (G.emp * .3) + ')'; X.beginPath(); X.arc(0, 0, C.R, 0, 6.3); X.fill() }
-      // turret + base
-      X.fillStyle = G.flash > 0 ? '#ff5a5a' : '#12304a'; X.strokeStyle = G.warn ? '#ff5a5a' : '#35e0ff'; X.lineWidth = 3; X.beginPath(); X.arc(0, 0, C.BASE, 0, 6.3); X.fill(); X.stroke();
-      X.save(); X.rotate(G.ang); X.fillStyle = G.ch ? '#ffd23f' : '#35e0ff'; X.fillRect(0, -7, C.BASE + 26, 14); X.restore();
       for (const e of G.E) {
         const d = C.en[e.type], a = LA(e.lane); X.save(); X.translate(Math.cos(a) * e.d, Math.sin(a) * e.d); X.rotate(a + Math.PI); X.fillStyle = d.col; X.strokeStyle = e.fz > 0 ? '#cfe6ff' : '#001'; X.lineWidth = e.fz > 0 ? 4 : 2; X.beginPath();
         if (e.type === 'runner') { X.moveTo(d.r + 4, 0); X.lineTo(-d.r, -d.r * .8); X.lineTo(-d.r, d.r * .8); X.closePath() } else if (e.type === 'tank') { X.rect(-d.r, -d.r, d.r * 2, d.r * 2) } else { X.moveTo(d.r + 3, 0); X.lineTo(0, -d.r); X.lineTo(-d.r, 0); X.lineTo(0, d.r); X.closePath() }
@@ -563,13 +643,23 @@
       for (const p of G.P) { const a = LA(p.lane), x = Math.cos(a), y = Math.sin(a); X.strokeStyle = p.col; X.lineWidth = p.big ? 10 : p.pierce ? 6 : 4; X.lineCap = 'round'; X.beginPath(); X.moveTo(x * (p.d - (p.pierce ? 50 : 20)), y * (p.d - (p.pierce ? 50 : 20))); X.lineTo(x * p.d, y * p.d); X.stroke() }
       for (const f of G.F) { X.globalAlpha = Math.max(0, f.l * 2); X.fillStyle = f.col; X.fillRect(f.x - 2, f.y - 2, 4, 4) } X.globalAlpha = 1;
       if (G.warn) { X.strokeStyle = 'rgba(255,90,90,' + (.3 + .3 * Math.sin(G.t * 10)) + ')'; X.lineWidth = 3; X.beginPath(); X.arc(0, 0, 150, 0, 6.3); X.stroke() }
+      X.restore();
+      // The turret indicator is screen-fixed in map mode while the battlefield rotates beneath it.
+      X.fillStyle = G.flash > 0 ? '#ff5a5a' : '#12304a'; X.strokeStyle = G.warn ? '#ff5a5a' : '#35e0ff'; X.lineWidth = 3;
+      X.beginPath(); X.arc(0, 0, C.BASE, 0, 6.3); X.fill(); X.stroke();
+      X.save();
+      X.rotate(S.rotation === 'map' ? -Math.PI / 2 : G.ang);
+      X.fillStyle = G.ch ? '#ffd23f' : '#35e0ff'; X.fillRect(0, -7, C.BASE + 26, 14);
+      X.restore();
+      X.restore();
     }
     let ck = ''; function hud() {
       const c = G.ch; $('hpb').style.width = G.hp + '%'; $('hpn').textContent = Math.ceil(G.hp); $('enb').style.width = G.en + '%'; $('enn').textContent = Math.round(G.en); $('sc').textContent = G.score; $('wv').textContent = G.wave; $('chn').textContent = G.chain; $('mul').textContent = '×' + (1 + Math.min(G.chain, 20) * .05).toFixed(2); $('tm').textContent = fmt(G.t);
       const nt = cl((enTime(G.en) + C.perChar * 4) * (G.dis > 0 ? C.disMul : 1), C.minT, C.maxT);
-      $('info').innerHTML = 'Lane <b>' + (G.lane + 1) + '/5</b> · ' + (S.ctrl === 'cmd' ? 'type LEFT / RIGHT' : 'A / D keys') + ' · ' + (S.mode === 'mem' ? 'Memory Window' : 'Visible Word') + ' · type <b>SHOOT</b> to fire · 1-4 abilities' + (c ? ' · <b>ROTATION LOCKED</b>' : '') + (G.dis > 0 ? ' · <b>DISRUPTED ' + G.dis.toFixed(1) + 's</b>' : '') + (G.en < 25 ? ' · <b>LOW ENERGY: next challenge ≈' + nt.toFixed(1) + 's</b>' : '') + (G.warn ? ' · <b>⚠ ENEMY NEAR BASE</b>' : '');
+      $('info').innerHTML = (S.rotation === 'map' ? 'MAP ROTATION' : 'TURRET ROTATION') + ' · ' + (S.ctrl === 'cmd' ? 'type LEFT / RIGHT / SHOOT' : 'custom keys') + ' · ' + (S.mode === 'mem' ? 'Memory Window' : 'Visible Word') + ' · type the challenge word to fire' + (c ? ' · <b>ROTATION LOCKED</b>' : '') + (G.dis > 0 ? ' · <b>DISRUPTED ' + G.dis.toFixed(1) + 's</b>' : '') + (G.en < 25 ? ' · <b>LOW ENERGY: next challenge ≈' + nt.toFixed(1) + 's</b>' : '') + (G.warn ? ' · <b>⚠ ENEMY NEAR BASE</b>' : '');
+
       $('bufd').textContent = c ? '' : (G.buf ? '> ' + G.buf : '');
-      C.ab.forEach((a, i) => { const b = $('ab' + i); b.className = !G.un[i] ? 'lk' : G.cd[i] > 0 ? 'cd' : ''; b.querySelector('small').textContent = !G.un[i] ? 'LOCKED · ' + G.prog + '/' + a.un : G.cd[i] > 0 ? 'cooldown ' + Math.ceil(G.cd[i]) + 's' : a.n === 'EMP' ? 'READY · freeze all' : a.all ? 'READY · ALL LANES · fail −' + a.fail + ' EN' : 'READY · fail −' + a.fail + ' EN' });
+      C.ab.forEach((a, i) => { const b = $('ab' + i); b.className = !G.un[i] ? 'lk' : G.cd[i] > 0 ? 'cd' : ''; });
       $('ch').classList.toggle('hide', !c); if (!c) { ck = ''; return }
       let h = ''; if (c.phase === 'show') h = '<span class="mk">' + c.word + '</span>'; else for (let i = 0; i < c.word.length; i++) { const t = c.typed[i]; if (S.mode === 'vis') h += '<span class="' + (t === undefined ? (i === c.typed.length ? 'nx' : '') : t === c.word[i] ? 'ok' : 'bad') + '">' + c.word[i] + '</span>'; else h += '<span class="' + (i === c.typed.length ? 'nx' : 'mm') + '">' + (t === undefined ? '_' : t) + '</span>' }
       if (h !== ck) { $('wd').innerHTML = h; ck = h }
@@ -579,22 +669,69 @@
     function loop(ts) { const dt = Math.min(.05, (ts - last) / 1000); last = ts; if (mode === 'play' && !G.paused) upd(dt); if (G) { draw(); if (mode === 'play') hud() } if (mode !== 'menu') raf = requestAnimationFrame(loop) }
     // ===== UI =====
     function buildAbs() {
-      $('abs').innerHTML = '<button id="sh">SHOOT<small>type SHOOT</small></button>' + C.ab.map((a, i) => '<button id="ab' + i + '"><b>[' + (i + 1) + '] ' + a.n + '</b><small></small></button>').join('');
-      $('sh').onclick = e => { e.target.blur(); if (mode === 'play' && !G.paused) G.ch ? toast('Challenge already active', 'var(--c3)') : startCh(-1) }; C.ab.forEach((a, i) => $('ab' + i).onclick = e => { e.currentTarget.blur(); if (mode === 'play' && !G.paused) tryAb(i) })
+      // Left panel: abilities always remain in numeric order from top to bottom.
+      $('abs').innerHTML = '<div class="panel-title">ABILITIES</div>' +
+        C.ab.map((a, i) => '<button id="ab' + i + '"><span>' + a.n + '</span><small>[' + (i + 1) + ']</small></button>').join('');
+      C.ab.forEach((a, i) => $('ab' + i).onclick = e => {
+        e.currentTarget.blur();
+        if (mode === 'play' && !G.paused) tryAb(i);
+      });
+
+      // Right panel: labels reflect the selected control mode and the player's current remap.
+      const controls = S.ctrl === 'cmd'
+        ? [{ id: 'left', key: 'LEFT', action: 'ROTATE LEFT' }, { id: 'right', key: 'RIGHT', action: 'ROTATE RIGHT' }, { id: 'shoot', key: 'SHOOT', action: 'START CHALLENGE' }]
+        : [{ id: 'left', key: 'A', action: 'ROTATE LEFT' }, { id: 'right', key: 'D', action: 'ROTATE RIGHT' }, { id: 'shoot', key: 'S', action: 'START CHALLENGE' }];
+      $('keyhelp').innerHTML = '<div class="panel-title">CONTROLS</div>' +
+        controls.map(c => '<button id="ctl-' + c.id + '"><span>' + c.key + '</span><small>' + c.action + '</small></button>').join('');
+      $('ctl-left').onclick = e => { e.currentTarget.blur(); if (mode === 'play' && !G.paused && !G.ch) rot(-1); };
+      $('ctl-right').onclick = e => { e.currentTarget.blur(); if (mode === 'play' && !G.paused && !G.ch) rot(1); };
+      $('ctl-shoot').onclick = e => { e.currentTarget.blur(); if (mode === 'play' && !G.paused) G.ch ? toast('Challenge already active', 'var(--c3)') : startCh(-1); };
     }
     function menu() {
-      const how = S.ctrl === 'cmd' ? 'Type <b>LEFT</b> / <b>RIGHT</b> — commands fire automatically the moment the last letter is typed (no Enter needed); hold Backspace to erase; the buffer clears after 2.5s idle' : 'Press <b>A</b> / <b>D</b> to rotate one lane per key press (key repeat is ignored)';
-      $('how').innerHTML = '<li>' + how + '.</li><li>Type <b>SHOOT</b> to lock the current lane and start a word challenge; finish it in time to fire. Rotation is locked during a challenge; enemies keep moving.</li><li>Energy shortens your timer. A failed shot costs Energy once. Perfect Chains boost score and restore Energy.</li><li>Abilities: keys 1–4 or click. Esc cancels an active prompt (costs Energy, same as failing it); otherwise Esc pauses.</li>';
-      [...$('gc').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.ctrl));[...$('gm').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.mode)); $('snd').setAttribute('aria-pressed', S.sound); $('rm').setAttribute('aria-pressed', S.rm);
+      const how = S.ctrl === 'cmd' ? 'Type <b>LEFT</b> / <b>RIGHT</b> to rotate and <b>SHOOT</b> to start a word challenge (no Enter needed)' : 'Press <b>A</b> to rotate left, <b>D</b> to rotate right, and <b>S</b> to start a word challenge. Free-typed commands are disabled in this mode';
+      const rotationHow = S.rotation === 'map' ? 'The turret stays fixed while the battlefield rotates to bring the selected lane to the top' : 'The battlefield stays fixed while the turret rotates toward the selected lane';
+      $('how').innerHTML = '<li>' + how + '. ' + rotationHow + '.</li><li>Starting a challenge only reveals the word. You must still type the word correctly before time runs out to fire. Rotation is locked during a challenge; enemies keep moving.</li><li>Energy shortens your timer. A failed shot costs Energy once. Perfect Chains boost score and restore Energy.</li><li>Abilities: keys 1–4 or click. Esc cancels an active prompt (costs Energy, same as failing it); otherwise Esc pauses.</li>';
+      [...$('gr').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.rotation)); [...$('gc').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.ctrl));[...$('gm').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.mode)); $('snd').setAttribute('aria-pressed', S.sound); $('rm').setAttribute('aria-pressed', S.rm);
       const dv = dinfo(S.spd); if (+$('spd').value !== S.spd) $('spd').value = S.spd; $('spdv').textContent = S.spd.toFixed(2) + 'x';
       $('spdd').innerHTML = '<b>' + dv.n + '</b> · score ×' + dv.m.toFixed(2) + ' · changes enemy movement speed only. Easy 0.70–0.85 · Medium 0.90–1.10 · Hard 1.15–1.50';
       const r = ld('r'); $('recs').innerHTML = Object.keys(names).map(k => '<tr><td>' + names[k] + '</td><td>' + (r[k] ? (+r[k].score || 0) + (+r[k].spd > 0 ? ' · ' + dtxt(+r[k].spd) : '') : '—') + '</td></tr>').join(''); sv('s', S)
     }
-    $('gc').onclick = e => { if (e.target.dataset.v) { S.ctrl = e.target.dataset.v; menu() } }; $('gm').onclick = e => { if (e.target.dataset.v) { S.mode = e.target.dataset.v; menu() } };
+    $('gr').onclick = e => { if (e.target.dataset.v) { S.rotation = e.target.dataset.v; menu() } }; $('gc').onclick = e => { if (e.target.dataset.v) { S.ctrl = e.target.dataset.v; menu() } }; $('gm').onclick = e => { if (e.target.dataset.v) { S.mode = e.target.dataset.v; menu() } };
     $('snd').onclick = () => { S.sound = !S.sound; menu() }; $('spd').oninput = e => { S.spd = Math.min(1.5, Math.max(.7, Math.round(+e.target.value * 20) / 20)); menu() }; $('rm').onclick = () => { S.rm = !S.rm; menu() };
+
+    const tutorialPages = [
+      { title: '1 / 5 — YOUR DEFENSE', text: 'Protect the base at the center. Enemies approach through five lanes. If an enemy reaches the base, your health is reduced. Your goal is to survive as long as possible and build your score.' },
+      { title: '2 / 5 — ROTATE BETWEEN LANES', text: 'Choose a lane before firing. In keyboard mode, press A to rotate left and D to rotate right. In Type Commands mode, type LEFT or RIGHT. You can choose Map Rotation or Turret Rotation in the menu; both work the same and share the same best score.' },
+      { title: '3 / 5 — START A SHOT', text: 'When you are ready to attack, press S in keyboard mode or type SHOOT in Type Commands mode. This only starts a word challenge — it does not fire immediately. Your selected lane is locked while the challenge is active.' },
+      { title: '4 / 5 — TYPE TO FIRE', text: 'Type the displayed word accurately before the timer runs out. In Memory Window mode, memorize the word before it disappears. In Visible Word mode, the word stays visible while you type. A successful challenge fires at the selected lane.' },
+      { title: '5 / 5 — ABILITIES & SURVIVAL', text: 'Unlock abilities by earning progress points. Use keys 1–4 or click the ability buttons on the left. Each ability starts its own word challenge and may have a cooldown. Esc cancels a challenge (with an energy penalty); otherwise Esc pauses the game. You are ready — good luck!' }
+    ];
+    let tutorialIndex = 0;
+    function showTutorial() {
+      tutorialIndex = 0;
+      $('menu').classList.add('hide');
+      $('tutorial').classList.remove('hide');
+      renderTutorial();
+    }
+    function renderTutorial() {
+      const p = tutorialPages[tutorialIndex];
+      $('tutTitle').textContent = p.title;
+      $('tutText').textContent = p.text;
+      $('tutStep').textContent = 'STEP ' + (tutorialIndex + 1) + ' OF ' + tutorialPages.length;
+      $('tutBack').disabled = tutorialIndex === 0;
+      $('tutNext').textContent = tutorialIndex === tutorialPages.length - 1 ? 'Got it' : 'Next';
+    }
+    $('tutorialBtn').onclick = showTutorial;
+    $('tutBack').onclick = () => { tutorialIndex = Math.max(0, tutorialIndex - 1); renderTutorial(); };
+    $('tutNext').onclick = () => {
+      if (tutorialIndex < tutorialPages.length - 1) { tutorialIndex++; renderTutorial(); }
+      else { $('tutorial').classList.add('hide'); $('menu').classList.remove('hide'); }
+    };
+    $('tutClose').onclick = () => { $('tutorial').classList.add('hide'); $('menu').classList.remove('hide'); };
+
     $('play').onclick = () => { initAudio(); newRun() }; $('again').onclick = newRun;
     $('res').onclick = () => pauseT(); $('rst').onclick = e => { if (e.target.textContent.startsWith('Confirm')) newRun(); else e.target.textContent = 'Confirm restart?' };
-    const toMenu = () => { mode = 'menu'; cancelAnimationFrame(raf);['pause', 'over'].forEach(i => $(i).classList.add('hide'));['abs', 'pbtn', 'ch'].forEach(i => $(i).classList.add('hide')); $('menu').classList.remove('hide'); $('info').innerHTML = ''; $('toast').textContent = ''; menu(); X.setTransform(1, 0, 0, 1, 0, 0); X.clearRect(0, 0, cv.width, cv.height) };
+    const toMenu = () => { mode = 'menu'; cancelAnimationFrame(raf);['pause', 'over', 'tutorial'].forEach(i => $(i).classList.add('hide'));['abs', 'pbtn', 'ch', 'keyhelp'].forEach(i => $(i).classList.add('hide')); $('menu').classList.remove('hide'); $('info').innerHTML = ''; $('toast').textContent = ''; menu(); X.setTransform(1, 0, 0, 1, 0, 0); X.clearRect(0, 0, cv.width, cv.height) };
     $('mnu').onclick = toMenu; $('mnu2').onclick = toMenu; $('pbtn').onclick = e => { e.target.blur(); pauseT() };
     rs(); menu();
   </script>
