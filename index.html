@@ -363,7 +363,7 @@
     const $ = i => document.getElementById(i), cv = $('c'), X = cv.getContext('2d');
     // ===== CONFIG (all balance lives here) =====
     const C = {
-      R: 400, BASE: 38, HP: 100, EN: 100, proj: 650, shotDmg: 1, failEn: 12, perChar: .22, minT: 1.2, maxT: 9, memBase: 0, memChar: .12, memTier: .1, memMin: .6, memMax: 2.2, // spawn pacing: first enemy after `first` s, then gap = start - step*(wave-1), floored at min, +/- jit random
+      R: 400, BASE: 38, HP: 100, EN: 100, proj: 650, shotDmg: 1, failEn: 12, cancelEn: 12 /* Esc-cancel base penalty; ability prompts scale by ab.fail/failEn */, perChar: .22, minT: 1.2, maxT: 9, memBase: 0, memChar: .12, memTier: .1, memMin: .6, memMax: 2.2, // spawn pacing: first enemy after `first` s, then gap = start - step*(wave-1), floored at min, +/- jit random
       spawn: { first: 1.8, start: 3.2, step: .12, min: 1.9, jit: .15, waveLen: 30, speedGrow: .02, speedCap: 1.4 },
       // Spawn Director: type gaps (seconds and spawn counts), soft active limits, threat budget
       dir: { tankWave: 4, tank2Wave: 9, tankGap: 16, tankSpawns: 4, tankW: .5, disWave: 3, dis2Wave: 8, disGap: 14, disSpawns: 3, disW: .4, thr: { runner: 1, tank: 3, disruptor: 2 }, bud0: 5, budWave: .8, budMax: 14 },
@@ -371,8 +371,11 @@
       diff: [{ max: .875, n: 'Easy', m: .8 }, { max: 1.125, n: 'Medium', m: 1 }, { max: 99, n: 'Hard', m: 1.5 }],
       enT: [[0, 1], [25, 1.5], [50, 2], [75, 2.5], [100, 3]], disDur: 8, disMul: .8, disEn: 20, chainEvery: 5, chainEn: 6, maxEnemies: 10,
       en: { runner: { sp: 38, hp: 1, dmg: 8, pts: 10, r: 14, col: '#35e0ff', L: 'R' }, tank: { sp: 15, hp: 4, dmg: 22, pts: 40, r: 24, col: '#ff9a3c', L: 'T' }, disruptor: { sp: 24, hp: 3, dmg: 10, pts: 25, r: 17, col: '#ff4d8d', L: 'D' } },
-      ab: [{ n: 'PULSE', tier: 0, dmg: 2, pierce: 0, cd: 6, un: 50, fail: 12, tm: 1, col: '#35e0ff' }, { n: 'PIERCER', tier: 2, dmg: 2, pierce: 1, cd: 12, un: 400, fail: 15, tm: 1.1, col: '#d56bff' },
-      { n: 'EMP', tier: 1, dmg: 0, cd: 25, un: 150, fail: 15, tm: 1, freeze: 4, col: '#7aa8ff' }, { n: 'OVERLOAD', tier: 3, dmg: 8, pierce: 1, cd: 30, un: 700, fail: 35, tm: 1.2, col: '#ff7a2a' }]
+      ab: [{ n: 'PULSE', tier: 0, dmg: 2, pierce: 0, cd: 6, un: 50, fail: 12, tm: 1, col: '#35e0ff' },
+           { n: 'EMP', tier: 1, dmg: 0, cd: 25, un: 150, fail: 15, tm: 1, freeze: 4, col: '#7aa8ff' },
+           { n: 'PIERCER', tier: 2, dmg: 2, pierce: 1, cd: 12, un: 400, fail: 15, tm: 1.1, col: '#d56bff' },
+           { n: 'OVERLOAD', tier: 3, dmg: 8, pierce: 1, cd: 30, un: 700, all: 1, fail: 35, tm: 1.2, col: '#ff7a2a' }
+          ]
     };
     const W = [['cat', 'sun', 'run', 'blue', 'fire', 'moon', 'star', 'lamp', 'sand', 'wind', 'rock', 'tree', 'jump', 'gold'], ['planet', 'rocket', 'signal', 'shield', 'garden', 'bridge', 'jungle', 'silver', 'window', 'memory'], ['quantum', 'gravity', 'network', 'crystal', 'thunder', 'balance', 'fortune', 'mystery'], ['bookkeeper', 'synchronize', 'labyrinth', 'whirlwind', 'xylophone', 'symphonic', 'tranquility', 'juxtapose']];
     // ===== storage =====
@@ -438,10 +441,16 @@
     }
     function fire(c) {
       const a = c.ab; if (c.ai >= 0) { G.cd[c.ai] = a.cd; add(15); G.pa++ }
+      if (a.all) { // OVERLOAD: independent full-damage piercing projectile down every lane; each enemy lives in one lane so is hit once
+        for (let l = 0; l < 5; l++) { G.P.push({ lane: l, d: C.BASE, prev: C.BASE, dmg: a.dmg, pierce: true, hit: new Set(), col: a.col, big: true }); boom(Math.cos(LA(l)) * C.BASE, Math.sin(LA(l)) * C.BASE, a.col, 8) }
+        G.blast = .8; G.shake = Math.max(G.shake, .25); toast('OVERLOAD — all 5 lanes hit', 'var(--c3)'); return
+      }
       if (a.freeze) { G.E.forEach(e => e.fz = a.freeze); G.emp = .7; toast('EMP — enemies frozen ' + a.freeze + 's', 'var(--c1)'); return }
       G.P.push({ lane: c.lane, d: C.BASE, prev: C.BASE, dmg: c.ai >= 0 ? a.dmg : C.shotDmg, pierce: !!a.pierce, hit: new Set(), col: a.col, big: c.ai === 3 })
     }
-    function cancelCh() { G.ch = null; G.buf = ''; ck = ''; toast('Prompt cancelled — no penalty', 'var(--dim)'); beep(300, .05) }
+    // Cancelling costs Energy exactly once (G.ch is cleared first, so a repeat Esc pauses instead) and breaks the chain like a failure,
+    // so it is never cheaper than failing; it grants nothing and starts no cooldown.
+    function cancelCh() { const c = G.ch, pen = Math.round(C.cancelEn * c.ab.fail / C.failEn); G.ch = null; G.buf = ''; ck = ''; G.chain = 0; G.en = Math.max(0, G.en - pen); G.shake = Math.max(G.shake, .15); toast('Prompt cancelled −' + pen + ' ENERGY', 'var(--c3)'); beep(200, .12, 'square') }
     function tryAb(i) {
       const a = C.ab[i]; let m = ''; if (G.ch) m = 'Finish the current challenge first'; else if (!G.un[i]) m = a.n + ' unlocks at ' + a.un + ' progress pts (you have ' + G.prog + ')'; else if (G.cd[i] > 0) m = a.n + ' cooling down (' + Math.ceil(G.cd[i]) + 's)';
       if (m) return toast(m, 'var(--c3)'); startCh(i)
@@ -486,7 +495,7 @@
     function upd(dt) {
       G.t += dt; const hold = !!(G.ch && G.ch.phase === 'show'); const w = 1 + Math.floor(G.t / C.spawn.waveLen); if (w > G.wave) { G.wave = w; toast('⚠ WAVE ' + w + ' — enemies faster and more frequent', 'var(--c2)'); beep(220, .4, 'triangle') }
       if (!hold) { G.sp -= dt; if (G.sp <= 0) G.sp = spawn() ? nextGap() : .5 }
-      G.cd = G.cd.map(v => Math.max(0, v - dt)); G.dis = Math.max(0, G.dis - dt); G.flash = Math.max(0, G.flash - dt); G.shake = Math.max(0, G.shake - dt); G.emp = Math.max(0, G.emp - dt); G.bufT -= dt; if (G.bufT <= 0) G.buf = '';
+      G.cd = G.cd.map(v => Math.max(0, v - dt)); G.dis = Math.max(0, G.dis - dt); G.flash = Math.max(0, G.flash - dt); G.shake = Math.max(0, G.shake - dt); G.emp = Math.max(0, G.emp - dt); G.blast = Math.max(0, (G.blast || 0) - dt); G.bufT -= dt; if (G.bufT <= 0) G.buf = '';
       G.ang += ((((LA(G.lane) - G.ang) % 6.2832) + 9.4248) % 6.2832 - 3.1416) * Math.min(1, dt * 14);
       let near = false;
       for (const e of G.E) {
@@ -531,6 +540,10 @@
         const a = LA(i), sel = i === G.lane; X.beginPath(); X.moveTo(0, 0); X.arc(0, 0, C.R, a - A, a + A); X.closePath(); X.fillStyle = sel ? 'rgba(53,224,255,.16)' : i % 2 ? 'rgba(40,60,100,.18)' : 'rgba(40,60,100,.08)'; X.fill(); X.strokeStyle = sel ? '#35e0ff' : '#27406a'; X.lineWidth = sel ? 3 : 1; X.stroke();
         X.fillStyle = sel ? '#35e0ff' : '#6f8fb8'; X.font = 'bold 20px monospace'; X.textAlign = 'center'; X.textBaseline = 'middle'; X.fillText('L' + (i + 1), Math.cos(a) * (C.R + 22), Math.sin(a) * (C.R + 22))
       }
+      if (G.blast > 0) { // Overload: orange tint on all five lanes + expanding shockwave ring (ring skipped in reduced motion)
+        const k = 1 - G.blast / .8; for (let i = 0; i < 5; i++) { const a = LA(i); X.beginPath(); X.moveTo(0, 0); X.arc(0, 0, C.R, a - A, a + A); X.closePath(); X.fillStyle = 'rgba(255,122,42,' + (.22 * (1 - k)) + ')'; X.fill() }
+        if (!S.rm) { X.strokeStyle = 'rgba(255,170,80,' + (1 - k) + ')'; X.lineWidth = 2 + 6 * (1 - k); X.beginPath(); X.arc(0, 0, C.BASE + k * (C.R - C.BASE), 0, 6.3); X.stroke() }
+      }
       if (G.emp > 0) { X.fillStyle = 'rgba(122,168,255,' + (G.emp * .3) + ')'; X.beginPath(); X.arc(0, 0, C.R, 0, 6.3); X.fill() }
       // turret + base
       X.fillStyle = G.flash > 0 ? '#ff5a5a' : '#12304a'; X.strokeStyle = G.warn ? '#ff5a5a' : '#35e0ff'; X.lineWidth = 3; X.beginPath(); X.arc(0, 0, C.BASE, 0, 6.3); X.fill(); X.stroke();
@@ -551,11 +564,11 @@
       const nt = cl((enTime(G.en) + C.perChar * 4) * (G.dis > 0 ? C.disMul : 1), C.minT, C.maxT);
       $('info').innerHTML = 'Lane <b>' + (G.lane + 1) + '/5</b> · ' + (S.ctrl === 'cmd' ? 'type LEFT / RIGHT' : 'A / D keys') + ' · ' + (S.mode === 'mem' ? 'Memory Window' : 'Visible Word') + ' · type <b>SHOOT</b> to fire · 1-4 abilities' + (c ? ' · <b>ROTATION LOCKED</b>' : '') + (G.dis > 0 ? ' · <b>DISRUPTED ' + G.dis.toFixed(1) + 's</b>' : '') + (G.en < 25 ? ' · <b>LOW ENERGY: next challenge ≈' + nt.toFixed(1) + 's</b>' : '') + (G.warn ? ' · <b>⚠ ENEMY NEAR BASE</b>' : '');
       $('bufd').textContent = c ? '' : (G.buf ? '> ' + G.buf : '');
-      C.ab.forEach((a, i) => { const b = $('ab' + i); b.className = !G.un[i] ? 'lk' : G.cd[i] > 0 ? 'cd' : ''; b.querySelector('small').textContent = !G.un[i] ? 'LOCKED · ' + G.prog + '/' + a.un : G.cd[i] > 0 ? 'cooldown ' + Math.ceil(G.cd[i]) + 's' : a.n === 'EMP' ? 'READY · freeze all' : 'READY · fail −' + a.fail + ' EN' });
+      C.ab.forEach((a, i) => { const b = $('ab' + i); b.className = !G.un[i] ? 'lk' : G.cd[i] > 0 ? 'cd' : ''; b.querySelector('small').textContent = !G.un[i] ? 'LOCKED · ' + G.prog + '/' + a.un : G.cd[i] > 0 ? 'cooldown ' + Math.ceil(G.cd[i]) + 's' : a.n === 'EMP' ? 'READY · freeze all' : a.all ? 'READY · ALL LANES · fail −' + a.fail + ' EN' : 'READY · fail −' + a.fail + ' EN' });
       $('ch').classList.toggle('hide', !c); if (!c) { ck = ''; return }
       let h = ''; if (c.phase === 'show') h = '<span class="mk">' + c.word + '</span>'; else for (let i = 0; i < c.word.length; i++) { const t = c.typed[i]; if (S.mode === 'vis') h += '<span class="' + (t === undefined ? (i === c.typed.length ? 'nx' : '') : t === c.word[i] ? 'ok' : 'bad') + '">' + c.word[i] + '</span>'; else h += '<span class="' + (i === c.typed.length ? 'nx' : 'mm') + '">' + (t === undefined ? '_' : t) + '</span>' }
       if (h !== ck) { $('wd').innerHTML = h; ck = h }
-      $('chl').textContent = c.ab.n + ' · Lane ' + (c.lane + 1) + ' locked' + (c.phase === 'show' ? ' · MEMORIZE (' + c.show.toFixed(1) + 's) · enemies held' : ' · type it! ' + c.left.toFixed(1) + 's') + (c.ai >= 0 ? ' · fail costs ' + c.ab.fail + ' EN' : '') + ' · Esc cancels';
+      $('chl').textContent = c.ab.n + (c.ab.all ? ' · ALL 5 LANES' : ' · Lane ' + (c.lane + 1) + ' locked') + (c.phase === 'show' ? ' · MEMORIZE (' + c.show.toFixed(1) + 's) · enemies held' : ' · type it! ' + c.left.toFixed(1) + 's') + (c.ai >= 0 ? ' · fail costs ' + c.ab.fail + ' EN' : '') + ' · Esc cancels (−' + Math.round(C.cancelEn * c.ab.fail / C.failEn) + ' EN)';
       const f = c.phase === 'show' ? c.show / c.showMax : c.left / c.lim, u = $('chb'); u.style.width = cl(f, 0, 1) * 100 + '%'; u.style.background = c.phase === 'show' ? '#ffd23f' : f < .3 ? '#ff5a5a' : '#35e0ff'; $('ch').style.borderColor = f < .3 && c.phase !== 'show' ? '#ff5a5a' : '#35e0ff'
     }
     function loop(ts) { const dt = Math.min(.05, (ts - last) / 1000); last = ts; if (mode === 'play' && !G.paused) upd(dt); if (G) { draw(); if (mode === 'play') hud() } if (mode !== 'menu') raf = requestAnimationFrame(loop) }
@@ -566,7 +579,7 @@
     }
     function menu() {
       const how = S.ctrl === 'cmd' ? 'Type <b>LEFT</b> / <b>RIGHT</b> — commands fire automatically the moment the last letter is typed (no Enter needed); hold Backspace to erase; the buffer clears after 2.5s idle' : 'Press <b>A</b> / <b>D</b> to rotate one lane per key press (key repeat is ignored)';
-      $('how').innerHTML = '<li>' + how + '.</li><li>Type <b>SHOOT</b> to lock the current lane and start a word challenge; finish it in time to fire. Rotation is locked during a challenge; enemies keep moving.</li><li>Energy shortens your timer. A failed shot costs Energy once. Perfect Chains boost score and restore Energy.</li><li>Abilities: keys 1–4 or click. Esc cancels an active prompt (no penalty); otherwise Esc pauses.</li>';
+      $('how').innerHTML = '<li>' + how + '.</li><li>Type <b>SHOOT</b> to lock the current lane and start a word challenge; finish it in time to fire. Rotation is locked during a challenge; enemies keep moving.</li><li>Energy shortens your timer. A failed shot costs Energy once. Perfect Chains boost score and restore Energy.</li><li>Abilities: keys 1–4 or click. Esc cancels an active prompt (costs Energy, same as failing it); otherwise Esc pauses.</li>';
       [...$('gc').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.ctrl));[...$('gm').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.mode)); $('snd').setAttribute('aria-pressed', S.sound); $('rm').setAttribute('aria-pressed', S.rm);
       const dv = dinfo(S.spd); if (+$('spd').value !== S.spd) $('spd').value = S.spd; $('spdv').textContent = S.spd.toFixed(2) + 'x';
       $('spdd').innerHTML = '<b>' + dv.n + '</b> · score ×' + dv.m.toFixed(2) + ' · changes enemy movement speed only. Easy 0.70–0.85 · Medium 0.90–1.10 · Hard 1.15–1.50';
