@@ -292,6 +292,13 @@
     td+td {
       text-align: right
     }
+
+    input[type=range] {
+      accent-color: var(--c1);
+      flex: 1;
+      min-width: 180px;
+      height: 28px
+    }
   </style>
 </head>
 
@@ -323,6 +330,10 @@
       <h2>WORD CHALLENGE</h2>
       <div class="row" id="gm"><button data-v="mem">Memory Window (word hides)</button><button data-v="vis">Visible
           Word</button></div>
+      <h2>ENEMY SPEED</h2>
+      <div class="row" style="align-items:center"><input id="spd" type="range" min="0.7" max="1.5" step="0.05"
+          aria-label="Enemy speed multiplier"><b id="spdv"></b></div>
+      <p id="spdd"></p>
       <h2>SETTINGS</h2>
       <div class="row"><button id="snd" aria-pressed="true">Sound</button><button id="rm" aria-pressed="false">Reduced
           motion</button></div>
@@ -352,21 +363,27 @@
     const $ = i => document.getElementById(i), cv = $('c'), X = cv.getContext('2d');
     // ===== CONFIG (all balance lives here) =====
     const C = {
-      R: 400, BASE: 38, HP: 100, EN: 100, proj: 650, shotDmg: 1, failEn: 12, perChar: .22, minT: 1.2, maxT: 9, memBase: 0, memChar: .12, memTier: .1, memMin: .6, memMax: 2.2, spawn: { start: 5, step: .25, min: 2.2, tankWave: 4, disWave: 2, tankP: .2, disP: .35, waveLen: 30, speedGrow: .03, speedCap: 1.5 },
+      R: 400, BASE: 38, HP: 100, EN: 100, proj: 650, shotDmg: 1, failEn: 12, perChar: .22, minT: 1.2, maxT: 9, memBase: 0, memChar: .12, memTier: .1, memMin: .6, memMax: 2.2, // spawn pacing: first enemy after `first` s, then gap = start - step*(wave-1), floored at min, +/- jit random
+      spawn: { first: 1.8, start: 3.2, step: .12, min: 1.9, jit: .15, waveLen: 30, speedGrow: .02, speedCap: 1.4 },
+      // Spawn Director: type gaps (seconds and spawn counts), soft active limits, threat budget
+      dir: { tankWave: 4, tank2Wave: 9, tankGap: 16, tankSpawns: 4, tankW: .5, disWave: 3, dis2Wave: 8, disGap: 14, disSpawns: 3, disW: .4, thr: { runner: 1, tank: 3, disruptor: 2 }, bud0: 5, budWave: .8, budMax: 14 },
+      // enemy-speed slider categories: value < max -> label + score multiplier
+      diff: [{ max: .875, n: 'Easy', m: .8 }, { max: 1.125, n: 'Medium', m: 1 }, { max: 99, n: 'Hard', m: 1.5 }],
       enT: [[0, 1], [25, 1.5], [50, 2], [75, 2.5], [100, 3]], disDur: 8, disMul: .8, disEn: 20, chainEvery: 5, chainEn: 6, maxEnemies: 10,
-      en: { runner: { sp: 38, hp: 1, dmg: 8, pts: 10, r: 14, col: '#35e0ff', L: 'R' }, tank: { sp: 15, hp: 5, dmg: 22, pts: 40, r: 24, col: '#ff9a3c', L: 'T' }, disruptor: { sp: 24, hp: 3, dmg: 10, pts: 25, r: 17, col: '#ff4d8d', L: 'D' } },
-      ab: [{ n: 'PULSE', tier: 0, dmg: 2, pierce: 0, cd: 6, un: 0, fail: 12, tm: 1, col: '#35e0ff' }, { n: 'PIERCER', tier: 2, dmg: 2, pierce: 1, cd: 12, un: 250, fail: 15, tm: 1.1, col: '#d56bff' },
-      { n: 'EMP', tier: 1, dmg: 0, cd: 25, un: 600, fail: 15, tm: 1, freeze: 4, col: '#7aa8ff' }, { n: 'OVERLOAD', tier: 3, dmg: 8, pierce: 1, cd: 30, un: 1000, fail: 35, tm: 1.2, col: '#ff7a2a' }]
+      en: { runner: { sp: 38, hp: 1, dmg: 8, pts: 10, r: 14, col: '#35e0ff', L: 'R' }, tank: { sp: 15, hp: 4, dmg: 22, pts: 40, r: 24, col: '#ff9a3c', L: 'T' }, disruptor: { sp: 24, hp: 3, dmg: 10, pts: 25, r: 17, col: '#ff4d8d', L: 'D' } },
+      ab: [{ n: 'PULSE', tier: 0, dmg: 2, pierce: 0, cd: 6, un: 50, fail: 12, tm: 1, col: '#35e0ff' }, { n: 'PIERCER', tier: 2, dmg: 2, pierce: 1, cd: 12, un: 400, fail: 15, tm: 1.1, col: '#d56bff' },
+      { n: 'EMP', tier: 1, dmg: 0, cd: 25, un: 150, fail: 15, tm: 1, freeze: 4, col: '#7aa8ff' }, { n: 'OVERLOAD', tier: 3, dmg: 8, pierce: 1, cd: 30, un: 700, fail: 35, tm: 1.2, col: '#ff7a2a' }]
     };
     const W = [['cat', 'sun', 'run', 'blue', 'fire', 'moon', 'star', 'lamp', 'sand', 'wind', 'rock', 'tree', 'jump', 'gold'], ['planet', 'rocket', 'signal', 'shield', 'garden', 'bridge', 'jungle', 'silver', 'window', 'memory'], ['quantum', 'gravity', 'network', 'crystal', 'thunder', 'balance', 'fortune', 'mystery'], ['bookkeeper', 'synchronize', 'labyrinth', 'whirlwind', 'xylophone', 'symphonic', 'tranquility', 'juxtapose']];
     // ===== storage =====
     const LS = 'typedef.'; const ld = k => { try { const v = JSON.parse(localStorage.getItem(LS + k)); return v && typeof v === 'object' ? v : {} } catch { return {} } }, sv = (k, v) => { try { localStorage.setItem(LS + k, JSON.stringify(v)) } catch { } };
-    let S = Object.assign({ ctrl: 'cmd', mode: 'mem', sound: true, rm: false }, ld('s'));
-    if (!['cmd', 'ad'].includes(S.ctrl)) S.ctrl = 'cmd'; if (!['mem', 'vis'].includes(S.mode)) S.mode = 'mem'; S.sound = S.sound !== false; S.rm = S.rm === true;
+    let S = Object.assign({ ctrl: 'cmd', mode: 'mem', sound: true, rm: false, spd: 1 }, ld('s'));
+    if (!['cmd', 'ad'].includes(S.ctrl)) S.ctrl = 'cmd'; if (!['mem', 'vis'].includes(S.mode)) S.mode = 'mem'; S.sound = S.sound !== false; S.rm = S.rm === true; S.spd = Math.min(1.5, Math.max(.7, Math.round((+S.spd || 1) * 20) / 20));
     const key = () => S.ctrl + '-' + S.mode, names = { 'cmd-mem': 'Command + Memory', 'cmd-vis': 'Command + Visible', 'ad-mem': 'A/D + Memory', 'ad-vis': 'A/D + Visible' };
     // ===== helpers =====
     const cl = (v, a, b) => Math.min(b, Math.max(a, v)), LA = i => -Math.PI / 2 + i * 2 * Math.PI / 5, fmt = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
     function enTime(e) { const t = C.enT; for (let i = 1; i < t.length; i++)if (e <= t[i][0]) { const [a, b] = [t[i - 1], t[i]]; return a[1] + (b[1] - a[1]) * (e - a[0]) / (b[0] - a[0]) } return t[t.length - 1][1] }
+    const dinfo = v => C.diff.find(d => v < d.max) || C.diff[2], dtxt = v => dinfo(v).n + ' (' + v.toFixed(2) + 'x speed)';
     let au = null;
     function initAudio() {
       try {
@@ -400,12 +417,13 @@
     let G = null, mode = 'menu', raf = 0, last = 0;
     function newRun() {
       G = {
-        t: 0, hp: C.HP, en: C.EN, score: 0, chain: 0, best: 0, lane: 0, ang: LA(0), wave: 1, E: [], P: [], F: [], ch: null, buf: '', bufT: 0, cd: [0, 0, 0, 0], un: [1, 0, 0, 0], dis: 0, flash: 0, shake: 0, emp: 0, sp: 2, paused: false,
+        t: 0, hp: C.HP, en: C.EN, score: 0, chain: 0, best: 0, lane: 0, ang: LA(0), wave: 1, E: [], P: [], F: [], ch: null, buf: '', bufT: 0, cd: [0, 0, 0, 0], un: [0, 0, 0, 0], dis: 0, flash: 0, shake: 0, emp: 0, sp: C.spawn.first, paused: false, prog: 0, spdMul: S.spd, sm: dinfo(S.spd).m, dir: { tT: -99, tD: -99, sT: 99, sD: 99 },
         kills: { runner: 0, tank: 0, disruptor: 0 }, ok: 0, fail: 0, keys: 0, right: 0, recent: [], pk: 0, pa: 0, warn: 0
       };
       mode = 'play';['menu', 'pause', 'over'].forEach(i => $(i).classList.add('hide'));['abs', 'pbtn'].forEach(i => $(i).classList.remove('hide')); buildAbs(); toast('Wave 1 — type SHOOT to begin', 'var(--c1)'); cancelAnimationFrame(raf); last = performance.now(); raf = requestAnimationFrame(loop)
     }
-    function add(p, k) { G.score += Math.round(p * (1 + Math.min(G.chain, 20) * .05)); G[k] += 0; C.ab.forEach((a, i) => { if (!G.un[i] && G.score >= a.un) { G.un[i] = 1; toast('UNLOCKED: ' + a.n + ' (key ' + (i + 1) + ')', 'var(--c3)'); beep(880, .3) } }) }
+    // score = displayed (x difficulty multiplier, once); prog = unlock progress (chain bonus only, difficulty-independent)
+    function add(p) { const b = p * (1 + Math.min(G.chain, 20) * .05); G.score += Math.round(b * G.sm); G.prog += Math.round(b); C.ab.forEach((a, i) => { if (!G.un[i] && G.prog >= a.un) { G.un[i] = 1; toast('UNLOCKED: ' + a.n + ' (key ' + (i + 1) + ')', 'var(--c3)'); beep(880, .3) } }) }
     function rot(d) { G.lane = (G.lane + d + 5) % 5; toast((d < 0 ? '◀ LEFT' : 'RIGHT ▶') + ' → Lane ' + (G.lane + 1), 'var(--c1)'); beep(300, .05) }
     function startCh(ai) {
       if (G.ch) return; const ab = ai >= 0 ? C.ab[ai] : { n: 'SHOT', tier: Math.min(2, Math.floor((G.wave - 1) / 3)), tm: 1, fail: C.failEn, col: '#ffd23f' }; let w, n = 0;
@@ -425,14 +443,14 @@
     }
     function cancelCh() { G.ch = null; G.buf = ''; ck = ''; toast('Prompt cancelled — no penalty', 'var(--dim)'); beep(300, .05) }
     function tryAb(i) {
-      const a = C.ab[i]; let m = ''; if (G.ch) m = 'Finish the current challenge first'; else if (!G.un[i]) m = a.n + ' unlocks at ' + a.un + ' score'; else if (G.cd[i] > 0) m = a.n + ' cooling down (' + Math.ceil(G.cd[i]) + 's)';
+      const a = C.ab[i]; let m = ''; if (G.ch) m = 'Finish the current challenge first'; else if (!G.un[i]) m = a.n + ' unlocks at ' + a.un + ' progress pts (you have ' + G.prog + ')'; else if (G.cd[i] > 0) m = a.n + ' cooling down (' + Math.ceil(G.cd[i]) + 's)';
       if (m) return toast(m, 'var(--c3)'); startCh(i)
     }
     function key_(e) {
       if (mode !== 'play') return; const k = e.key;
       if (k === 'Escape' && G.ch && !G.paused) { if (!e.repeat) cancelCh(); e.preventDefault(); return }
-      if (k === 'Escape' || ((k === 'p' || k === 'P') && !G.ch)) { if (!e.repeat) pauseT(); e.preventDefault(); return }
-      if (G.paused) return; if (k === ' ' || k.startsWith('Arrow')) e.preventDefault(); if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (k === 'Escape') { if (!e.repeat) pauseT(); e.preventDefault(); return }
+      if (G.paused) return; if (k === ' ' || k === 'Backspace' || k.startsWith('Arrow')) e.preventDefault(); if ((e.repeat && k !== 'Backspace') || e.ctrlKey || e.metaKey || e.altKey) return;
       const c = G.ch;
       if (c) { if (c.phase === 'show') return; if (k === 'Backspace') c.typed = c.typed.slice(0, -1); else if (/^[a-z]$/i.test(k) && c.typed.length < c.word.length) { const ch = k.toLowerCase(); G.keys++; if (ch === c.word[c.typed.length]) G.right++; else beep(130, .06, 'square'); c.typed += ch; if (c.typed === c.word) endCh(true) } return }
       if (S.ctrl === 'ad' && /^[ad]$/i.test(k)) return rot(k.toLowerCase() === 'a' ? -1 : 1);
@@ -447,15 +465,27 @@
     function pauseT(why) { if (mode !== 'play') return; G.paused = !G.paused; $('pause').classList.toggle('hide', !G.paused); $('pwhy').textContent = why || 'Gameplay is frozen: enemies, timers and cooldowns are stopped.'; $('rst').textContent = 'Restart run'; if (G.paused) $('res').focus() }
     addEventListener('blur', () => { if (mode === 'play' && !G.paused) pauseT('Paused because the window lost focus, so you do not lose time unfairly.') });
     // ===== simulation =====
+    function nextGap() { const q = C.spawn; return Math.max(q.min, q.start - q.step * (G.wave - 1)) * (1 - q.jit + Math.random() * 2 * q.jit) }
+    // Spawn Director: weighted pick among types allowed by gaps, soft active limits and a threat budget
+    function pickType() {
+      const D = C.dir, w = G.wave, t = G.t, d = G.dir, E = G.E, nT = E.filter(e => e.type === 'tank').length, nD = E.filter(e => e.type === 'disruptor').length;
+      const thr = E.reduce((a, e) => a + D.thr[e.type], 0), bud = Math.min(D.budMax, D.bud0 + D.budWave * w), wt = { runner: 1 + 2 * nT + nD };
+      if (w >= D.tankWave && nT < (w >= D.tank2Wave ? 2 : 1) && t - d.tT >= D.tankGap && d.sT >= D.tankSpawns && thr + D.thr.tank <= bud) wt.tank = D.tankW * cl((w - D.tankWave + 1) / 4, .25, 1);
+      if (w >= D.disWave && nD < (w >= D.dis2Wave ? 2 : 1) && t - d.tD >= D.disGap && d.sD >= D.disSpawns && thr + D.thr.disruptor <= bud) wt.disruptor = D.disW * cl((w - D.disWave + 1) / 4, .25, 1);
+      let r = Math.random() * Object.values(wt).reduce((a, b) => a + b, 0); for (const k in wt) { if ((r -= wt[k]) <= 0) return k } return 'runner'
+    }
     function spawn() {
-      if (G.E.length >= C.maxEnemies) return; const lane = Math.floor(Math.random() * 5); if (G.E.some(e => e.lane === lane && e.d > C.R - 70)) return;
-      const r = Math.random(), w = G.wave, sp = C.spawn; let t = 'runner'; if (w >= sp.tankWave && r < sp.tankP) t = 'tank'; else if (w >= sp.disWave && r > 1 - sp.disP) t = 'disruptor'; const d = C.en[t];
-      G.E.push({ lane, type: t, d: C.R + 10, hp: d.hp, max: d.hp, fz: 0, spd: d.sp * Math.min(C.spawn.speedCap, 1 + C.spawn.speedGrow * (w - 1)) })
+      if (G.E.length >= C.maxEnemies) return false;
+      const free = [0, 1, 2, 3, 4].filter(l => !G.E.some(e => e.lane === l && e.d > C.R - 70)); if (!free.length) return false;
+      const t = pickType(), D = G.dir, d = C.en[t], heavy = G.E.filter(e => e.type !== 'runner').map(e => e.lane);
+      let L = t === 'runner' ? free : free.filter(l => !heavy.some(h => Math.abs(h - l) % 4 <= 1)); if (!L.length) L = free; // heavies avoid lanes next to other heavies
+      const lane = L[Math.floor(Math.random() * L.length)]; D.sT++; D.sD++; if (t === 'tank') { D.tT = G.t; D.sT = 0 } if (t === 'disruptor') { D.tD = G.t; D.sD = 0 }
+      G.E.push({ lane, type: t, d: C.R + 10, hp: d.hp, max: d.hp, fz: 0, spd: d.sp * Math.min(C.spawn.speedCap, 1 + C.spawn.speedGrow * (G.wave - 1)) * G.spdMul }); return true
     }
     function boom(x, y, col, n = 10) { if (S.rm) n = 3; for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, s = 40 + Math.random() * 120; G.F.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, l: .5, col }) } }
     function upd(dt) {
       G.t += dt; const hold = !!(G.ch && G.ch.phase === 'show'); const w = 1 + Math.floor(G.t / C.spawn.waveLen); if (w > G.wave) { G.wave = w; toast('⚠ WAVE ' + w + ' — enemies faster and more frequent', 'var(--c2)'); beep(220, .4, 'triangle') }
-      if (!hold) { G.sp -= dt; if (G.sp <= 0) { spawn(); G.sp = Math.max(C.spawn.min, C.spawn.start - C.spawn.step * (G.wave - 1)) } }
+      if (!hold) { G.sp -= dt; if (G.sp <= 0) G.sp = spawn() ? nextGap() : .5 }
       G.cd = G.cd.map(v => Math.max(0, v - dt)); G.dis = Math.max(0, G.dis - dt); G.flash = Math.max(0, G.flash - dt); G.shake = Math.max(0, G.shake - dt); G.emp = Math.max(0, G.emp - dt); G.bufT -= dt; if (G.bufT <= 0) G.buf = '';
       G.ang += ((((LA(G.lane) - G.ang) % 6.2832) + 9.4248) % 6.2832 - 3.1416) * Math.min(1, dt * 14);
       let near = false;
@@ -486,9 +516,9 @@
     }
     function over() {
       mode = 'over'; G.ch = null; $('ch').classList.add('hide');['abs', 'pbtn'].forEach(i => $(i).classList.add('hide')); const r = ld('r'), k = key(), o = r[k] || {};
-      const nb = G.score > (+o.score || 0); if (nb) { r[k] = { score: G.score, time: Math.floor(G.t), chain: G.best }; sv('r', r) }
+      const nb = G.score > (+o.score || 0); if (nb) { r[k] = { score: G.score, time: Math.floor(G.t), chain: G.best, spd: G.spdMul }; sv('r', r) }
       const acc = G.keys ? Math.round(100 * G.right / G.keys) : 100, row = (a, b) => '<tr><td>' + a + '</td><td>' + b + '</td></tr>';
-      $('stats').innerHTML = row('Mode', names[k]) + row('Score', G.score + (nb ? ' ★ NEW BEST' : '')) + row('Survived', fmt(G.t) + ' (wave ' + G.wave + ')') + row('Defeated', 'Runner ' + G.kills.runner + ' · Tank ' + G.kills.tank + ' · Disruptor ' + G.kills.disruptor) + row('Typing accuracy', acc + '%') + row('Challenges ok / failed', G.ok + ' / ' + G.fail) + row('Abilities used', G.pa) + row('Best Perfect Chain', G.best) + row('Best score (this mode)', Math.max(G.score, +o.score || 0));
+      $('stats').innerHTML = row('Mode', names[k]) + row('Difficulty', dtxt(G.spdMul).replace('speed', 'enemy speed') + ' · score ×' + G.sm.toFixed(2)) + row('Score', G.score + (nb ? ' ★ NEW BEST' : '')) + row('Survived', fmt(G.t) + ' (wave ' + G.wave + ')') + row('Defeated', 'Runner ' + G.kills.runner + ' · Tank ' + G.kills.tank + ' · Disruptor ' + G.kills.disruptor) + row('Typing accuracy', acc + '%') + row('Challenges ok / failed', G.ok + ' / ' + G.fail) + row('Abilities used', G.pa) + row('Best Perfect Chain', G.best) + row('Best score (this mode)', Math.max(G.score, +o.score || 0));
       $('over').classList.remove('hide'); $('again').focus()
     }
     // ===== render =====
@@ -521,7 +551,7 @@
       const nt = cl((enTime(G.en) + C.perChar * 4) * (G.dis > 0 ? C.disMul : 1), C.minT, C.maxT);
       $('info').innerHTML = 'Lane <b>' + (G.lane + 1) + '/5</b> · ' + (S.ctrl === 'cmd' ? 'type LEFT / RIGHT' : 'A / D keys') + ' · ' + (S.mode === 'mem' ? 'Memory Window' : 'Visible Word') + ' · type <b>SHOOT</b> to fire · 1-4 abilities' + (c ? ' · <b>ROTATION LOCKED</b>' : '') + (G.dis > 0 ? ' · <b>DISRUPTED ' + G.dis.toFixed(1) + 's</b>' : '') + (G.en < 25 ? ' · <b>LOW ENERGY: next challenge ≈' + nt.toFixed(1) + 's</b>' : '') + (G.warn ? ' · <b>⚠ ENEMY NEAR BASE</b>' : '');
       $('bufd').textContent = c ? '' : (G.buf ? '> ' + G.buf : '');
-      C.ab.forEach((a, i) => { const b = $('ab' + i); b.className = !G.un[i] ? 'lk' : G.cd[i] > 0 ? 'cd' : ''; b.querySelector('small').textContent = !G.un[i] ? 'LOCKED · ' + a.un + ' pts' : G.cd[i] > 0 ? 'cooldown ' + Math.ceil(G.cd[i]) + 's' : a.n === 'EMP' ? 'READY · freeze all' : 'READY · fail −' + a.fail + ' EN' });
+      C.ab.forEach((a, i) => { const b = $('ab' + i); b.className = !G.un[i] ? 'lk' : G.cd[i] > 0 ? 'cd' : ''; b.querySelector('small').textContent = !G.un[i] ? 'LOCKED · ' + G.prog + '/' + a.un : G.cd[i] > 0 ? 'cooldown ' + Math.ceil(G.cd[i]) + 's' : a.n === 'EMP' ? 'READY · freeze all' : 'READY · fail −' + a.fail + ' EN' });
       $('ch').classList.toggle('hide', !c); if (!c) { ck = ''; return }
       let h = ''; if (c.phase === 'show') h = '<span class="mk">' + c.word + '</span>'; else for (let i = 0; i < c.word.length; i++) { const t = c.typed[i]; if (S.mode === 'vis') h += '<span class="' + (t === undefined ? (i === c.typed.length ? 'nx' : '') : t === c.word[i] ? 'ok' : 'bad') + '">' + c.word[i] + '</span>'; else h += '<span class="' + (i === c.typed.length ? 'nx' : 'mm') + '">' + (t === undefined ? '_' : t) + '</span>' }
       if (h !== ck) { $('wd').innerHTML = h; ck = h }
@@ -535,13 +565,15 @@
       $('sh').onclick = e => { e.target.blur(); if (mode === 'play' && !G.paused) G.ch ? toast('Challenge already active', 'var(--c3)') : startCh(-1) }; C.ab.forEach((a, i) => $('ab' + i).onclick = e => { e.currentTarget.blur(); if (mode === 'play' && !G.paused) tryAb(i) })
     }
     function menu() {
-      const how = S.ctrl === 'cmd' ? 'Type <b>LEFT</b> / <b>RIGHT</b> — commands fire automatically the moment the last letter is typed (no Enter needed); Backspace edits; the buffer clears after 2.5s idle' : 'Press <b>A</b> / <b>D</b> to rotate one lane per key press (key repeat is ignored)';
-      $('how').innerHTML = '<li>' + how + '.</li><li>Type <b>SHOOT</b> to lock the current lane and start a word challenge; finish it in time to fire. Rotation is locked during a challenge; enemies keep moving.</li><li>Energy shortens your timer. A failed shot costs Energy once. Perfect Chains boost score and restore Energy.</li><li>Abilities: keys 1–4 or click. Esc cancels an active prompt (no penalty) or pauses; P also pauses.</li>';
+      const how = S.ctrl === 'cmd' ? 'Type <b>LEFT</b> / <b>RIGHT</b> — commands fire automatically the moment the last letter is typed (no Enter needed); hold Backspace to erase; the buffer clears after 2.5s idle' : 'Press <b>A</b> / <b>D</b> to rotate one lane per key press (key repeat is ignored)';
+      $('how').innerHTML = '<li>' + how + '.</li><li>Type <b>SHOOT</b> to lock the current lane and start a word challenge; finish it in time to fire. Rotation is locked during a challenge; enemies keep moving.</li><li>Energy shortens your timer. A failed shot costs Energy once. Perfect Chains boost score and restore Energy.</li><li>Abilities: keys 1–4 or click. Esc cancels an active prompt (no penalty); otherwise Esc pauses.</li>';
       [...$('gc').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.ctrl));[...$('gm').children].forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.mode)); $('snd').setAttribute('aria-pressed', S.sound); $('rm').setAttribute('aria-pressed', S.rm);
-      const r = ld('r'); $('recs').innerHTML = Object.keys(names).map(k => '<tr><td>' + names[k] + '</td><td>' + (r[k] ? (+r[k].score || 0) : '—') + '</td></tr>').join(''); sv('s', S)
+      const dv = dinfo(S.spd); if (+$('spd').value !== S.spd) $('spd').value = S.spd; $('spdv').textContent = S.spd.toFixed(2) + 'x';
+      $('spdd').innerHTML = '<b>' + dv.n + '</b> · score ×' + dv.m.toFixed(2) + ' · changes enemy movement speed only. Easy 0.70–0.85 · Medium 0.90–1.10 · Hard 1.15–1.50';
+      const r = ld('r'); $('recs').innerHTML = Object.keys(names).map(k => '<tr><td>' + names[k] + '</td><td>' + (r[k] ? (+r[k].score || 0) + (+r[k].spd > 0 ? ' · ' + dtxt(+r[k].spd) : '') : '—') + '</td></tr>').join(''); sv('s', S)
     }
     $('gc').onclick = e => { if (e.target.dataset.v) { S.ctrl = e.target.dataset.v; menu() } }; $('gm').onclick = e => { if (e.target.dataset.v) { S.mode = e.target.dataset.v; menu() } };
-    $('snd').onclick = () => { S.sound = !S.sound; menu() }; $('rm').onclick = () => { S.rm = !S.rm; menu() };
+    $('snd').onclick = () => { S.sound = !S.sound; menu() }; $('spd').oninput = e => { S.spd = Math.min(1.5, Math.max(.7, Math.round(+e.target.value * 20) / 20)); menu() }; $('rm').onclick = () => { S.rm = !S.rm; menu() };
     $('play').onclick = () => { initAudio(); newRun() }; $('again').onclick = newRun;
     $('res').onclick = () => pauseT(); $('rst').onclick = e => { if (e.target.textContent.startsWith('Confirm')) newRun(); else e.target.textContent = 'Confirm restart?' };
     const toMenu = () => { mode = 'menu'; cancelAnimationFrame(raf);['pause', 'over'].forEach(i => $(i).classList.add('hide'));['abs', 'pbtn', 'ch'].forEach(i => $(i).classList.add('hide')); $('menu').classList.remove('hide'); $('info').innerHTML = ''; $('toast').textContent = ''; menu(); X.setTransform(1, 0, 0, 1, 0, 0); X.clearRect(0, 0, cv.width, cv.height) };
